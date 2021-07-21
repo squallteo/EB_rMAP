@@ -7,8 +7,9 @@ set.seed(712)
 
 n_c <- 20
 p_cvec <- seq(0.15, 0.35, 0.01)
+a_c <- b_c <- 1
 es <- 0.2
-ppp_cut <- 0 #c for ppp
+ppp_cut <- 0.1 #c for ppp
 nsim <- 500
 # with(AS, meta::metaprop(event = r, n = n, method = "Inverse"))
 #historical rate around 0.25 by meta analysis
@@ -28,7 +29,7 @@ for(y in 0:n_c){
   w <- seq(0, 1, 0.01)
   ppp <- rep(NA, length(w))
   for(i in 1:length(w)){
-    rmap <- robustify(map_hat, weight=w[i], mean=1/2)
+    rmap <- robustify(map_hat, weight=w[i], mean = a_c/(a_c+b_c), n = a_c+b_c- 1)
     rmap_pred <- preddist(rmap, n=n_c)
     p_lower <- pmix(rmap_pred, y_c)
     ppp[i] <- ifelse(p_lower < 0.5, 2*p_lower, 2*(1-p_lower))
