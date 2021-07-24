@@ -10,23 +10,23 @@ set.seed(712)
 #point est is 0.25 (0.202, 0.312). Decide to consider true current rate from 0.2 to 0.32
 
 #current control
-n_c <- 20
-pvec_c <- c(0.20, 0.22, 0.25, 0.28, 0.32)
+n_c <- 50
+pvec_c <- seq(0.20, 0.32, 0.01)
 w_vec <- c(0.2, 0.5, 0.8) #w_v in rMAP
 a_c <- 1; b_c <- 1 #vague beta prior for p(c)
 #EB rMAP parameters
 ppp_cut <- 0.1
 #current treatment
-n_t <- 40
-effsize <- 0.3
+n_t <- 100
+effsize <- 0.2
 prior_t <- mixbeta(c(1, 1, 1), param = "ab")
 
 #decision rule to claim trial success: pr(p_t - p_c > Qcut) > Pcut
 Qcut <- 0
 Pcut <- 0.95
 # success_rule = decision2S(pc = 0.95, qc = 0, lower.tail = F, link = "identity")
-npostdist <- 10000
-nsim <- 100
+npostdist <- 20000
+nsim <- 5000
 #################################
 #################################
 #derive and approximate MAP prior
@@ -60,6 +60,7 @@ for(y in 0:n_c){
   if(y==0){wdt <- tt}
   else {wdt <- rbind(wdt, tt)}
 }  
+# ggplot(wdt, aes(x=y, y = w_eb)) + geom_line()
 
 #################################
 #################################
@@ -75,7 +76,7 @@ for(p in 1:length(pvec_c)){
     foreach(s = 1:nsim, .combine = rbind, .packages = c("RBesT","tidyverse"), .errorhandling = "remove") %dopar% {
     set.seed(s+712)
     #current treatment arm
-    y_t = rbinom(1, n_t, p_c + effsize)
+    y_t <- rbinom(1, n_t, p_c + effsize)
     postmix_t <- postmix(prior_t,r = y_t, n = n_t)
     post_t <- rmix(mix = postmix_t, n = npostdist)
     
@@ -103,10 +104,21 @@ for(p in 1:length(pvec_c)){
     
   }
   
+  tt <- tibble(Rate=p_c, Method = c("EB", w_vec),
+               PoS = colMeans(results[,1:(length(w_vec)+1)], na.rm = T),
+               Est = colMeans(results[,-(1:(length(w_vec)+1))], na.rm = T), 
+               Bias = Est-Rate, 
+               Var = apply(results[,-(1:(length(w_vec)+1))], 2, var, na.rm=T),
+               MSE = Bias^2 + Var)
+  if(p==1) {outdt <- tt}
+  else {outdt <- rbind(outdt, tt)}
   
 }
 
 
+ggplot(outdt, aes(x=Rate, y=PoS, color = Method)) + geom_line()
+ggplot(outdt, aes(x=Rate, y=Bias, color = Method)) + geom_line()
+ggplot(outdt, aes(x=Rate, y=MSE, color = Method)) + geom_line()
 
-
+save.image("BinSim.RData")
 
