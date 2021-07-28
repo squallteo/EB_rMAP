@@ -5,14 +5,10 @@ lapply(package2load, require, character.only = TRUE)
 
 set.seed(712)
 
-#meta analysis of historical data
-# with(dt, meta::metaprop(event = r, n = n, method = "Inverse"))
-#point est is 0.25 (0.202, 0.312). Decide to consider true current rate from 0.2 to 0.32
-
 #current control
 n_c <- 50
 pvec_c <- seq(0.20, 0.32, 0.01)
-w_vec <- c(0.2, 0.5, 0.8) #w_v in rMAP
+w_vec <- c(0, 0.25, 0.5, 0.75, 1) #w_v in rMAP
 a_c <- 1; b_c <- 1 #vague beta prior for p(c)
 #EB rMAP parameters
 ppp_cut <- 0.1
@@ -29,6 +25,9 @@ npostdist <- 20000
 nsim <- 5000
 #################################
 #################################
+#meta analysis of historical data
+# with(dt, meta::metaprop(event = r, n = n, method = "Inverse"))
+#point est is 0.25 (0.202, 0.312). Decide to consider true current rate from 0.2 to 0.32
 #derive and approximate MAP prior
 map_mcmc <- gMAP(cbind(r, n-r) ~ 1 | study,
                  data=AS,

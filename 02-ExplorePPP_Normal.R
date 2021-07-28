@@ -36,8 +36,8 @@ map_hat <- automixfit(map_mcmc)
 
 
 
-sigma(map_hat) <- 200
-n_c <- 50
+sigma(map_hat) <- 88
+n_c <- 30
 y_cvec <- seq(-55, -40, 0.1)
 
 for(y in 1:length(y_cvec)){
