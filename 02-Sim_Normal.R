@@ -6,24 +6,25 @@ lapply(package2load, require, character.only = TRUE)
 set.seed(712)
 
 #current control
-n_c <- 30
+n_c <- 50
 yvec_c <- seq(-60, -40, 0.1) #a fine grid of y_c for w_eb
-muvec_c <- seq(-60, -40, 2.5) #a grid of mu_c for simulations
-w_vec <- c(0, 0.25, 0.5, 0.75, 1) #w_v in rMAP
+muvec_c <- seq(-60, -40, 1) #a grid of mu_c for simulations
+# w_vec <- c(0, 0.25, 0.5, 0.75, 1) #w_v in rMAP
+w_vec <- c(0, 0.5, 1) #w_v in rMAP
 m_v <- -50; sd_v <- 50 #mean and sd of vague beta prior for mu_c
 #EB rMAP parameters
-ppp_cut <- 0.1
+ppp_cut <- 0.9
 
 #decision rule to claim trial success: pr(p_c < Qcut) > Pcut
-Qcut <- -45
-Pcut <- 0.95
+Qcut <- -40
+Pcut <- 0.975
 
 npostdist <- 20000
-nsim <- 1000
+nsim <- 5000
 #################################
 #################################
-dt <- crohn
-sigma <- 88
+dt <- crohn[-5,]
+sigma <- 40
 dt$se_yh <- sigma/sqrt(dt$n)
 #meta analysis of historical data
 # with(dt, meta::metamean(n = n, mean = y, sd = rep(sigma,length(study))))
@@ -33,12 +34,12 @@ map_mcmc <- gMAP(cbind(y, se_yh) ~ 1 | study,
                  #weight = n,
                  data=dt,
                  family=gaussian,
-                 beta.prior=cbind(-50, 88),
-                 tau.dist="HalfNormal",tau.prior=cbind(0,11))
+                 beta.prior=cbind(-50, sigma),
+                 tau.dist="HalfNormal",tau.prior=cbind(0,5))
 #approximate the MAP
 map_hat <- automixfit(map_mcmc)
 sigma(map_hat) <- sigma
-
+ess(map_hat)
 
 #################################
 #################################
@@ -49,20 +50,22 @@ for(y in 1:length(yvec_c)){
   w <- seq(0, 1, 0.01)
   ppp <- rep(NA, length(w))
   for(i in 1:length(w)){
-    rmap <- robustify(map_hat, weight=w[i], mean=m_v, sigma=sd_v)
+    rmap <- robustify(map_hat, weight=w[i], mean=m_v, n=1, sigma=sigma)
     rmap_pred <- preddist(rmap, n=n_c, sigma=sigma)
     p_lower <- pmix(rmap_pred, y_c)
     ppp[i] <- ifelse(p_lower < 0.5, 2*p_lower, 2*(1-p_lower))
   }
   # View(tibble(w, ppp))
-  pppdt <- tibble(w, ppp) %>% mutate(pass=(ppp >= ppp_cut)) %>% filter(ppp==max(ppp) & pass)
-  w_eb <- ifelse(nrow(pppdt) == 0, 1, max(pppdt$w))
+  # pppdt <- tibble(w, ppp) %>% mutate(pass=(ppp >= ppp_cut)) %>% filter(ppp==max(ppp) & pass)
+  # w_eb <- ifelse(nrow(pppdt) == 0, 1, max(pppdt$w))
+  pppdt <- tibble(w, ppp) %>% mutate(pass=(ppp >= ppp_cut)) %>% filter(pass)
+  w_eb <- ifelse(nrow(pppdt) == 0, 1, min(pppdt$w))
   ppp_eb <- as.numeric(pppdt %>% filter(w==w_eb) %>% select(ppp))
   tt <- tibble(y_c, w_eb, ppp_eb)
   if(y==1){wdt <- tt}
   else {wdt <- rbind(wdt, tt)}
 } 
-# ggplot(wdt, aes(x=y_c, y = w_eb)) + geom_line()
+ggplot(wdt, aes(x=y_c, y = w_eb)) + geom_line()
 
 #################################
 #################################
@@ -78,7 +81,8 @@ for(p in 1:length(muvec_c)){
     foreach(s = 1:nsim, .combine = rbind, .packages = c("RBesT","tidyverse"), .errorhandling = "remove") %dopar% {
       set.seed(s+712)
       #current control arm
-      y_c <- rnorm(1, mu_c, sigma/sqrt(n_c))
+      yall_c <- rnorm(n_c, mu_c, sigma)
+      y_c <- mean(yall_c)
       #extract w_eb corresponding to observed data
       #if y_c is out of the grid, set w_eb to 1 (way off)
       if(y_c < min(yvec_c) | y_c > max(yvec_c)){
@@ -89,14 +93,12 @@ for(p in 1:length(muvec_c)){
         tt1 <- which(tt==min(tt))
         w_eb <- as.numeric(wdt %>% filter(y_c==yvec_c[tt1]) %>% select(w_eb))
       }
-
-      
       w_rmap <- c(w_eb, w_vec) #first element is w_eb
-      
+
       dvec <- estvec <- rep(NA, length(w_rmap))
       for(w in 1:length(w_rmap)){
         w_v <- w_rmap[w]
-        rmap_c <- robustify(map_hat, weight = w_v, mean = m_v, n = sd_v)
+        rmap_c <- robustify(map_hat, weight = w_v, mean = m_v, n=1, sigma = sigma)
         postmix_rmap_c <- postmix(rmap_c, n = n_c, m = y_c)
         post_rmap_c <- rmix(mix = postmix_rmap_c, n = npostdist)
         estvec[w] <- median(post_rmap_c)
@@ -119,9 +121,9 @@ for(p in 1:length(muvec_c)){
 }
 
 
-ggplot(outdt, aes(x=Mean, y=PoS, color = Method)) + geom_line()
 ggplot(outdt, aes(x=Mean, y=Bias, color = Method)) + geom_line()
 ggplot(outdt, aes(x=Mean, y=MSE, color = Method)) + geom_line()
+ggplot(outdt, aes(x=Mean, y=PoS, color = Method)) + geom_line()
 
 # save.image("NormalSim.RData")
 

@@ -11,7 +11,7 @@ pvec_c <- seq(0.20, 0.32, 0.01)
 w_vec <- c(0, 0.25, 0.5, 0.75, 1) #w_v in rMAP
 a_c <- 1; b_c <- 1 #vague beta prior for p(c)
 #EB rMAP parameters
-ppp_cut <- 0.1
+ppp_cut <- 0.8
 #current treatment
 n_t <- 100
 effsize <- 0.2
@@ -36,6 +36,7 @@ map_mcmc <- gMAP(cbind(r, n-r) ~ 1 | study,
                  beta.prior=2,
                  family=binomial)
 map_hat <- automixfit(map_mcmc)
+ess(map_hat)
 
 #################################
 #################################
@@ -52,14 +53,16 @@ for(y in 0:n_c){
     ppp[i] <- ifelse(p_lower < 0.5, 2*p_lower, 2*(1-p_lower))
   }
   # View(tibble(w, ppp))
-  pppdt <- tibble(w, ppp) %>% mutate(pass=(ppp >= ppp_cut)) %>% filter(ppp==max(ppp) & pass)
-  w_eb <- ifelse(nrow(pppdt) == 0, 1, max(pppdt$w))
+  # pppdt <- tibble(w, ppp) %>% mutate(pass=(ppp >= ppp_cut)) %>% filter(ppp==max(ppp) & pass)
+  # w_eb <- ifelse(nrow(pppdt) == 0, 1, max(pppdt$w))
+  pppdt <- tibble(w, ppp) %>% mutate(pass=(ppp >= ppp_cut)) %>% filter(pass)
+  w_eb <- ifelse(nrow(pppdt) == 0, 1, min(pppdt$w))
   ppp_eb <- as.numeric(pppdt %>% filter(w==w_eb) %>% select(ppp))
   tt <- tibble(y_c, w_eb, ppp_eb) %>% rename(y=y_c)
   if(y==0){wdt <- tt}
   else {wdt <- rbind(wdt, tt)}
 }  
-# ggplot(wdt, aes(x=y, y = w_eb)) + geom_line()
+ggplot(wdt, aes(x=y, y = w_eb)) + geom_line()
 
 #################################
 #################################
@@ -119,5 +122,5 @@ ggplot(outdt, aes(x=Rate, y=PoS, color = Method)) + geom_line()
 ggplot(outdt, aes(x=Rate, y=Bias, color = Method)) + geom_line()
 ggplot(outdt, aes(x=Rate, y=MSE, color = Method)) + geom_line()
 
-save.image("BinSim.RData")
+# save.image("BinSim.RData")
 
