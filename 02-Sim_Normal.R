@@ -17,7 +17,7 @@ ppp_cut <- 0.9
 
 #decision rule to claim trial success: pr(p_c < Qcut) > Pcut
 Qcut <- -40
-Pcut <- 0.975
+Pcut <- 0.95
 
 npostdist <- 20000
 nsim <- 5000
