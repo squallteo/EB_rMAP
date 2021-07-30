@@ -62,19 +62,19 @@ plotlst <- list()
 plotlst[[1]] <-
 outdt %>% filter(Gamma==0.85) %>%
   ggplot(aes(x=y_c, y = w_eb, color=factor(SS))) + geom_line(size=1) + geom_vline(xintercept=-46.8, linetype="dashed") +
-  xlab("Observed Mean Response") + ylab("EB-rMAP Weight") + theme_bw() +
+  xlab("Observed Mean Response") + ylab("EB-rMAP Weight") + theme_bw() + ggtitle("Gamma: 0.85") + 
   scale_color_discrete(name="Sample\nSize")
 
 plotlst[[2]] <-
 outdt %>% filter(SS==50) %>%
   ggplot(aes(x=y_c, y = w_eb, color=factor(Gamma))) + geom_line(size=1) + geom_vline(xintercept=-46.8, linetype="dashed") +
-  xlab("Observed Mean Response") + ylab("EB-rMAP Weight") + theme_bw() +
+  xlab("Observed Mean Response") + ylab("EB-rMAP Weight") + theme_bw() + ggtitle("Current Sample Size: 50") + 
   scale_color_discrete(name="Gamma")
 
 # save.image("CompareWeights_Normal.RData")
 
-# library(ggpubr)
-# png("EBweights.png", width = 2700, height = 1000, res = 300)
-# ggarrange(plotlst[[1]], plotlst[[2]],
-#           nrow = 1, ncol = 2)
-# dev.off()
+library(ggpubr)
+png("EBweights.png", width = 2700, height = 1000, res = 300)
+ggarrange(plotlst[[1]], plotlst[[2]],
+          nrow = 1, ncol = 2)
+dev.off()
