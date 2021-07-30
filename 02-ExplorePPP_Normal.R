@@ -60,7 +60,7 @@ for(k in 1:length(ppp_cutvec)){
 
 plotlst <- list()
 plotlst[[1]] <-
-outdt %>% filter(Gamma==0.9) %>%
+outdt %>% filter(Gamma==0.85) %>%
   ggplot(aes(x=y_c, y = w_eb, color=factor(SS))) + geom_line(size=1) + geom_vline(xintercept=-46.8, linetype="dashed") +
   xlab("Observed Mean Response") + ylab("EB-rMAP Weight") + theme_bw() +
   scale_color_discrete(name="Sample\nSize")

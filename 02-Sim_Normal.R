@@ -10,7 +10,7 @@ n_c <- 50
 yvec_c <- seq(-60, -40, 0.1) #a fine grid of y_c for w_eb
 muvec_c <- seq(-60, -40, 1) #a grid of mu_c for simulations
 # w_vec <- c(0, 0.25, 0.5, 0.75, 1) #w_v in rMAP
-w_vec <- c(0, 0.5, 1) #w_v in rMAP
+w_vec <- c(0, 0.25, 0.5, 0.75, 1) #w_v in rMAP
 m_v <- -50; sd_v <- 50 #mean and sd of vague beta prior for mu_c
 #EB rMAP parameters
 ppp_cut <- 0.9
@@ -120,10 +120,10 @@ for(p in 1:length(muvec_c)){
   
 }
 
-
-ggplot(outdt, aes(x=Mean, y=Bias, color = Method)) + geom_line()
-ggplot(outdt, aes(x=Mean, y=MSE, color = Method)) + geom_line()
-ggplot(outdt, aes(x=Mean, y=PoS, color = Method)) + geom_line()
+plotdt <- outdt %>% filter(!(Method %in% c("0.25", "0.75")))
+ggplot(plotdt, aes(x=Mean, y=Bias, color = Method)) + geom_line()
+ggplot(plotdt, aes(x=Mean, y=MSE, color = Method)) + geom_line()
+ggplot(plotdt, aes(x=Mean, y=PoS, color = Method)) + geom_line()
 
 # save.image("NormalSim.RData")
 
