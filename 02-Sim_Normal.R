@@ -7,8 +7,8 @@ set.seed(712)
 
 #current control
 n_c <- 50
-yvec_c <- seq(-60, -40, 0.1) #a fine grid of y_c for w_eb
-muvec_c <- seq(-60, -40, 1) #a grid of mu_c for simulations
+yvec_c <- seq(-60, -35, 0.1) #a fine grid of y_c for w_eb
+muvec_c <- seq(-55, -35, 1) #a grid of mu_c for simulations
 # w_vec <- c(0, 0.25, 0.5, 0.75, 1) #w_v in rMAP
 w_vec <- c(0, 0.25, 0.5, 0.75, 1) #w_v in rMAP
 m_v <- -50; sd_v <- 50 #mean and sd of vague beta prior for mu_c
@@ -28,7 +28,6 @@ sigma <- 40
 dt$se_yh <- sigma/sqrt(dt$n)
 #meta analysis of historical data
 # with(dt, meta::metamean(n = n, mean = y, sd = rep(sigma,length(study))))
-#point est is -50. Decide to consider true current mean from -60 to -40
 #derive and approximate MAP prior
 map_mcmc <- gMAP(cbind(y, se_yh) ~ 1 | study, 
                  #weight = n,
@@ -121,9 +120,31 @@ for(p in 1:length(muvec_c)){
 }
 
 plotdt <- outdt %>% filter(!(Method %in% c("0.25", "0.75")))
-ggplot(plotdt, aes(x=Mean, y=Bias, color = Method)) + geom_line()
-ggplot(plotdt, aes(x=Mean, y=MSE, color = Method)) + geom_line()
-ggplot(plotdt, aes(x=Mean, y=PoS, color = Method)) + geom_line()
+
+plotlst <- list()
+
+plotlst[[1]] <- 
+ggplot(plotdt, aes(x=Mean, y=PoS, color = Method)) + geom_line(size=1) + geom_vline(xintercept=-46.8, linetype="dashed") +
+  xlab("True Current Mean Response") + ylab("Probability of Success") + theme_bw() + 
+  scale_color_discrete(name="Mixture\nWeight") +
+  theme(legend.position = "none")
+
+plotlst[[2]] <- 
+ggplot(plotdt, aes(x=Mean, y=abs(Bias), color = Method)) + geom_line(size=1) + geom_vline(xintercept=-46.8, linetype="dashed") +
+  xlab("True Current Mean Response") + ylab("Absolute Bias") + theme_bw() + 
+  scale_color_discrete(name="Mixture\nWeight") +
+  theme(legend.position = "none")
+
+plotlst[[3]] <- 
+ggplot(plotdt, aes(x=Mean, y=MSE, color = Method)) + geom_line(size=1) + geom_vline(xintercept=-46.8, linetype="dashed") +
+  xlab("True Current Mean Response") + ylab("Mean Square Error") + theme_bw() + 
+  scale_color_discrete(name="Mixture\nWeight")
+
+library(ggpubr)
+png("Sim_Normal.png", width = 2700, height = 1000, res = 300)
+ggarrange(plotlst[[1]], plotlst[[2]], plotlst[[3]],
+          nrow = 1, ncol = 3)
+dev.off()
 
 # save.image("NormalSim.RData")
 

@@ -12,10 +12,14 @@ w_vec <- c(0, 0.25, 0.5, 0.75, 1) #w_v in rMAP
 a_c <- 1; b_c <- 1 #vague beta prior for p(c)
 #EB rMAP parameters
 ppp_cut <- 0.8
+#current treatment
+n_t <- 100
+effsize <- 0.2
+prior_t <- mixbeta(c(1, 1, 1), param = "ab")
 
 #decision rule to claim trial success: pr(p_t - p_c > Qcut) > Pcut
-Qcut <- 0.2
-Pcut <- 0.9
+Qcut <- 0
+Pcut <- 0.95
 # success_rule = decision2S(pc = 0.95, qc = 0, lower.tail = F, link = "identity")
 npostdist <- 20000
 nsim <- 5000
@@ -72,29 +76,35 @@ for(p in 1:length(pvec_c)){
   #parallel computing at simulation level
   results <-
     foreach(s = 1:nsim, .combine = rbind, .packages = c("RBesT","tidyverse"), .errorhandling = "remove") %dopar% {
-      set.seed(s+712)
-      #current control arm
-      y_c <- rbinom(1, n_c, p_c)
-      #extract w_eb corresponding to observed data
-      w_eb <- as.numeric(wdt %>% filter(y==y_c) %>% select(w_eb))
+    set.seed(s+712)
+    #current treatment arm
+    y_t <- rbinom(1, n_t, p_c + effsize)
+    postmix_t <- postmix(prior_t,r = y_t, n = n_t)
+    post_t <- rmix(mix = postmix_t, n = npostdist)
+    
+    #current control arm
+    y_c <- rbinom(1, n_c, p_c)
+    #extract w_eb corresponding to observed data
+    w_eb <- as.numeric(wdt %>% filter(y==y_c) %>% select(w_eb))
+    
+    w_rmap <- c(w_eb, w_vec) #first element is w_eb
+    
+    dvec <- estvec <- rep(NA, length(w_rmap))
+    for(w in 1:length(w_rmap)){
+      w_v <- w_rmap[w]
+      #robustification, note that RBesT uses the mean/sample size-1 parametrization, see help of "robustify" for details
+      rmap_c <- robustify(map_hat, weight = w_v, mean = a_c/(a_c+b_c), n = a_c+b_c- 1)
+      postmix_rmap_c <- postmix(rmap_c,r = y_c, n = n_c)
+      post_rmap_c <- rmix(mix = postmix_rmap_c, n = npostdist)
+      estvec[w] <- median(post_rmap_c)
       
-      w_rmap <- c(w_eb, w_vec) #first element is w_eb
-      
-      dvec <- estvec <- rep(NA, length(w_rmap))
-      for(w in 1:length(w_rmap)){
-        w_v <- w_rmap[w]
-        #robustification, note that RBesT uses the mean/sample size-1 parametrization, see help of "robustify" for details
-        rmap_c <- robustify(map_hat, weight = w_v, mean = a_c/(a_c+b_c), n = a_c+b_c- 1)
-        postmix_rmap_c <- postmix(rmap_c,r = y_c, n = n_c)
-        post_rmap_c <- rmix(mix = postmix_rmap_c, n = npostdist)
-        estvec[w] <- median(post_rmap_c)
-        
-        dvec[w] <- (mean(post_rmap_c > Qcut) > Pcut)
-      }
-      
-      c(dvec, estvec)
-      
+      post_diff <- post_t - post_rmap_c
+      dvec[w] <- (mean(post_diff> Qcut) > Pcut)
     }
+    
+    c(dvec, estvec)
+    
+  }
   
   tt <- tibble(Rate=p_c, Method = c("EB", w_vec),
                PoS = colMeans(results[,1:(length(w_vec)+1)], na.rm = T),
@@ -114,19 +124,19 @@ plotlst <- list()
 
 plotlst[[1]] <- 
   ggplot(plotdt, aes(x=Rate, y=PoS, color = Method)) + geom_line(size=1) + geom_vline(xintercept=0.25, linetype="dashed") +
-  xlab("True Current Rate") + ylab("Probability of Success") + theme_bw() + 
+  xlab("True Current Control Rate") + ylab("Probability of Success") + theme_bw() + 
   scale_color_discrete(name="Mixture\nWeight") +
   theme(legend.position = "none")
 
 plotlst[[2]] <- 
   ggplot(plotdt, aes(x=Rate, y=abs(Bias), color = Method)) + geom_line(size=1) + geom_vline(xintercept=0.25, linetype="dashed") +
-  xlab("True Current Rate") + ylab("Absolute Bias") + theme_bw() + 
+  xlab("True Current Control Rate") + ylab("Absolute Bias") + theme_bw() + 
   scale_color_discrete(name="Mixture\nWeight") +
   theme(legend.position = "none")
 
 plotlst[[3]] <- 
   ggplot(plotdt, aes(x=Rate, y=MSE, color = Method)) + geom_line(size=1) + geom_vline(xintercept=0.25, linetype="dashed") +
-  xlab("True Current Rate") + ylab("Mean Square Error") + theme_bw() + 
+  xlab("True Current Control Rate") + ylab("Mean Square Error") + theme_bw() + 
   scale_color_discrete(name="Mixture\nWeight")
 
 library(ggpubr)
