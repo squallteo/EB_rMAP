@@ -6,8 +6,8 @@ library(RBesT)
 library(ggplot2)
 library(tidyverse)
 
-source("00-BUGSModel.R")
-source("01-Func.R")
+source("03-BUGSModel.R")
+source("03-Func.R")
 ##FIOCCO data set 
 FIOCCO.n.events <- c(1,  3,  3,  4,  3,  0,  0,  2,  0,  6,  0,  0,  9,  1,  0, 10,  6,  6,  5,  9,
                      9,  3,  0,  0,  1,  3,  5,  7,  9,  4,  5, 10,  0,  0,  3,  7,  1,  2,  2,  4, 
@@ -56,15 +56,23 @@ FIOCCO.MAP.Prior <- MAC.Surv.anal_jags(Nobs              = 108,
 
 l <- 2
 loghaz <- FIOCCO.MAP.Prior$BUGSoutput$sims.list$log.hazard.pred[,,l]
-normal_mix <- RBesT::automixfit(prior.ss.int, type="norm")
+normal_mix <- RBesT::automixfit(loghaz, type="norm")
+sigma(normal_mix) <- 1
+ess(normal_mix)
 sample1 <- exp(rmix(normal_mix,10000))
-tb1 <- tibble(Mix="Normal", x=sample1)
 
-#as a Poisson?
-haz <- exp(prior.ss.int)
+
+#Poisson-Gamma model?
+haz <- exp(loghaz)
 poisson_mix <- RBesT::automixfit(haz, type="gamma")
+likelihood(poisson_mix) <- "poisson"
+preddist(poisson_mix, n=1)
+
+mixgamma(c(1,1,1), param =  ,likelihood = "poisson")
+
 sample2 <- rmix(poisson_mix,10000)
 tb2 <- tibble(Mix="Gamma", x=sample2)
+tb1 <- tibble(Mix="Normal", x=sample1)
 
 plotdt <- rbind(tb1, tb2)
 plotdt %>%
