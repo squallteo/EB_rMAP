@@ -208,6 +208,34 @@ for(i in 1:12){
 library(kableExtra)
 kableExtra::kbl(resdt, format="latex")
 
+#########density plots##############
+#EB
+loghaz <- analysis_EB$BUGSoutput$sims.list$log.hazard.pred[,,6]
+dt1 <- tibble(Method="EB-rMAP", Sample=exp(loghaz))
+#MAP
+loghaz <- analysis_MAP$BUGSoutput$sims.list$log.hazard.pred[,,6]
+dt2 <- tibble(Method="MAP (EX)", Sample=exp(loghaz))
+#Vague
+loghaz <- analysis_vague$BUGSoutput$sims.list$log.hazard.pred[,,6]
+dt3 <- tibble(Method="Vague (NEX)", Sample=exp(loghaz))
+
+plotdt <- rbind(dt1, dt2, dt3)
+
+
+png("HazardDensity.png", width = 1200, height = 1000, res = 300)
+plotdt %>% 
+  ggplot(aes(x=Sample, color=Method)) + geom_density(size=1) +
+  xlab("Hazard Rate") + ylab("Density") + theme_bw() +
+  scale_x_continuous(labels = seq(0,1.5, 0.25), breaks = seq(0,1.5, 0.25)) +
+  theme(legend.position = c(0.7, 0.7),
+        legend.text = element_text(size=10),
+        legend.title = element_text(size=10),
+        axis.text = element_text(size=10),
+        axis.title = element_text(size=10))
+dev.off()
+
+
+
 ########################################################
 ########################################################
 ########################################################
