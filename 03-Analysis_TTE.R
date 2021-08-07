@@ -176,6 +176,9 @@ analysis_vague <- MAC.Surv.anal_jags(Nobs              = 120,
 
 # save.image("TTEAnalysis.RData")
 
+rmat <- matrix(FIOCCO.n.events, nrow = 12, ncol = 10, byrow = F)
+Emat <- matrix(FIOCCO.exp.time, nrow = 12, ncol = 10, byrow = F)
+
 for(i in 1:12){
   #EB
   loghaz <- analysis_EB$BUGSoutput$sims.list$log.hazard.pred[,,i]
@@ -190,15 +193,20 @@ for(i in 1:12){
   tt <- round(exp(c(median(loghaz), quantile(loghaz, c(0.025, 0.975)))), 3)
   res3 <- paste(tt[1], " (", tt[2], ", ", tt[3], ")", sep="")
   
-  out_int <- tibble(Interval = i, w_eb = w_eb[i], EB = res1, MAP = res2, Vague = res3)
+  
+  fit <- meta::metarate(rmat[i, 1:9], Emat[i, 1:9])
+  hrate <- round(exp(fit$TE.fixed),3)
+  crate <- round(rmat[i, 10]/Emat[i, 10],3)
+  
+  out_int <- tibble(Interval = i, Hist = hrate, Curr = crate, w_eb = w_eb[i], EB = res1, MAP = res2, Vague = res3)
   
   if(i==1){resdt <- out_int}
   else(resdt <- rbind(resdt, out_int))
 }
 
-resdt
 
-
+library(kableExtra)
+kableExtra::kbl(resdt, format="latex")
 
 ########################################################
 ########################################################
