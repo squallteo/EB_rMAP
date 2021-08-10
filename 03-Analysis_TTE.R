@@ -1,17 +1,11 @@
-library(MASS)
-library(coda)
-library(R2jags)
-library(survival)
-library(RBesT)
-library(ggplot2)
-library(tidyverse)
-
 rm(list=ls())
+
+package2load <- c("RBesT", "tidyverse", "ggplot2")
+lapply(package2load, require, character.only = TRUE)
 set.seed(712)
 
-source("03-BUGSModel.R")
-source("03-Func.R")
-##FIOCCO data set from Roychoudhury and Neuenschwander (2020) paper in Statistics in Medicine
+ppp_cut <- 0.75
+
 FIOCCO.n.events <- c(1,  3,  3,  4,  3,  0,  0,  2,  0,  6,  0,  0,  9,  1,  0, 10,  6,  6,  5,  9,
                      9,  3,  0,  0,  1,  3,  5,  7,  9,  4,  5, 10,  0,  0,  3,  7,  1,  2,  2,  4, 
                      3,  1,  3,  0,  0,  0,  0,  0,  5,  3,  6,  2,  3,  3,  0,  2,  1,  1,  1,  0, 
@@ -29,195 +23,97 @@ FIOCCO.exp.time <- c(  9.4,  8.8,  7.9,  7.0,  6.1,  5.8,  5.8,  7.3,  8.8,  7.6
                        4.2,  4.2,  4.1,  6.7, 23.4, 22.6, 19.9, 17.8, 17.5, 16.4, 14.5, 17.2, 21.0, 
                        19.7, 17.4, 27.5)
 
-
-
-
-FIOCCO.MAP.Prior <- MAC.Surv.anal_jags(Nobs              = 108,
-                                       study             = sort(rep(1:9,12)),
-                                       Nstudies          = 9,
-                                       Nint              = 12,
-                                       Ncov              = 1,
-                                       Nout              = 1,
-                                       int.low           = rep(1:12,9),
-                                       int.high          = rep(1:12,9),
-                                       int.length        = c(0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25,
-                                                             0.33, 0.42, 0.42, 0.41, 0.67),
-                                       n.events          = FIOCCO.n.events[1:108],
-                                       exp.time          = FIOCCO.exp.time[1:108],
-                                       X                 = matrix(0,108,1),
-                                       Prior.mu.mean.ex  = c(0, 10),
-                                       Prior.rho.ex      = c(0,10),
-                                       prior.mu.mean.nex = matrix(rep(0,120), nrow=10, ncol=12),
-                                       prior.mu.sd.nex   = matrix(rep(2,120), nrow=10, ncol=12),
-                                       p.exch            = matrix(rep(1,120), nrow=10),
-                                       Prior.beta        = matrix(c(0,10), nrow=2) ,
-                                       beta.cutoffs      = 0,
-                                       Prior.tau.study   = c(0, 0.5),
-                                       Prior.tau.time    = c(-1.386294, 0.707293),
-                                       MAP.prior         = TRUE,
-                                       pars              = c("tau.study","log.hazard.pred"),
-                                       R.seed            = 10,
-                                       bugs.seed         = 12
-)
-
-
-map_lst <- NULL
-ppp_lst <- NULL
-ppp_cut <- 0.8
-w_eb <- rep(-1, 12)
-
-for(t in 1:12){
-  # curr_r <- rdata[18+t]
-  # curr_E <- Edata[18+t]
-  curr_r <- FIOCCO.n.events[108+t]
-  curr_E <- FIOCCO.exp.time[108+t]
-  loghaz <- FIOCCO.MAP.Prior$BUGSoutput$sims.list$log.hazard.pred[,,t]
-  map_hat <- RBesT::automixfit(loghaz, type="norm")
-  sigma(map_hat) <- sd(loghaz)
-  map_lst[[t]] <- map_hat
-  
-  w <- seq(0, 1, 0.01)
-  ppp <- rep(NA, length(w))
-  for(i in 1:length(w)){
-    rmap <- robustify(map_hat, weight=w[i], mean=0, sigma=2)
-    rmap_pred <- preddist(rmap, n=curr_r)
-    p_lower <- pmix(rmap_pred, log(curr_r/curr_E))
-    ppp[i] <- ifelse(p_lower < 0.5, 2*p_lower, 2*(1-p_lower))
-  }
-  pppdt <- tibble(w, ppp) %>% mutate(pass=(ppp >= ppp_cut)) %>% filter(pass)
-  ppp_lst[[t]] <- tibble(w, ppp) %>% ggplot(aes(x=w,y=ppp)) + geom_line() + ggtitle(t)
-  w_eb[t] <- ifelse(nrow(pppdt) == 0, 1, min(pppdt$w))
-}
-
-#analysis with EM-rMAP, MAP prior and vague prior
-analysis_EB <- MAC.Surv.anal_jags(Nobs              = 120,
-                                  study             = sort(rep(1:10,12)),
-                                  Nstudies          = 10,
-                                  Nint              = 12,
-                                  Ncov              = 1,
-                                  Nout              = 1,
-                                  int.low           = rep(1:12,10),
-                                  int.high          = rep(1:12,10),
-                                  int.length        = c(0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25,
-                                                       0.33, 0.42, 0.42, 0.41, 0.67),
-                                  n.events          = FIOCCO.n.events[1:120],
-                                  exp.time          = FIOCCO.exp.time[1:120],
-                                  X                 = matrix(0,120,1),
-                                  Prior.mu.mean.ex  = c(0, 10),
-                                  Prior.rho.ex      = c(0,10),
-                                  prior.mu.mean.nex = matrix(rep(0,120), nrow=10, ncol=12),
-                                  prior.mu.sd.nex   = matrix(rep(2,120), nrow=10, ncol=12),
-                                  p.exch            = 1 - rep(1,10) %o% w_eb, #EB weights
-                                  Prior.beta        = matrix(c(0,10), nrow=2) ,
-                                  beta.cutoffs      = 0,
-                                  Prior.tau.study   = c(0, 0.5),
-                                  Prior.tau.time    = c(-1.386294, 0.707293),
-                                  MAP.prior         = FALSE,
-                                  pars              = c("tau.study","log.hazard.pred"),
-                                  R.seed            = 10,
-                                  bugs.seed         = 12
-)
-
-analysis_MAP <- MAC.Surv.anal_jags(Nobs              = 120,
-                                  study             = sort(rep(1:10,12)),
-                                  Nstudies          = 10,
-                                  Nint              = 12,
-                                  Ncov              = 1,
-                                  Nout              = 1,
-                                  int.low           = rep(1:12,10),
-                                  int.high          = rep(1:12,10),
-                                  int.length        = c(0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25,
-                                                        0.33, 0.42, 0.42, 0.41, 0.67),
-                                  n.events          = FIOCCO.n.events[1:120],
-                                  exp.time          = FIOCCO.exp.time[1:120],
-                                  X                 = matrix(0,120,1),
-                                  Prior.mu.mean.ex  = c(0, 10),
-                                  Prior.rho.ex      = c(0,10),
-                                  prior.mu.mean.nex = matrix(rep(0,120), nrow=10, ncol=12),
-                                  prior.mu.sd.nex   = matrix(rep(2,120), nrow=10, ncol=12),
-                                  p.exch            = matrix(rep(1,120), nrow=10),
-                                  Prior.beta        = matrix(c(0,10), nrow=2) ,
-                                  beta.cutoffs      = 0,
-                                  Prior.tau.study   = c(0, 0.5),
-                                  Prior.tau.time    = c(-1.386294, 0.707293),
-                                  MAP.prior         = FALSE,
-                                  pars              = c("tau.study","log.hazard.pred"),
-                                  R.seed            = 10,
-                                  bugs.seed         = 12
-)
-
-analysis_vague <- MAC.Surv.anal_jags(Nobs              = 120,
-                                   study             = sort(rep(1:10,12)),
-                                   Nstudies          = 10,
-                                   Nint              = 12,
-                                   Ncov              = 1,
-                                   Nout              = 1,
-                                   int.low           = rep(1:12,10),
-                                   int.high          = rep(1:12,10),
-                                   int.length        = c(0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25,
-                                                         0.33, 0.42, 0.42, 0.41, 0.67),
-                                   n.events          = FIOCCO.n.events[1:120],
-                                   exp.time          = FIOCCO.exp.time[1:120],
-                                   X                 = matrix(0,120,1),
-                                   Prior.mu.mean.ex  = c(0, 10),
-                                   Prior.rho.ex      = c(0,10),
-                                   prior.mu.mean.nex = matrix(rep(0,120), nrow=10, ncol=12),
-                                   prior.mu.sd.nex   = matrix(rep(2,120), nrow=10, ncol=12),
-                                   p.exch            = matrix(rep(0,120), nrow=10),
-                                   Prior.beta        = matrix(c(0,10), nrow=2) ,
-                                   beta.cutoffs      = 0,
-                                   Prior.tau.study   = c(0, 0.5),
-                                   Prior.tau.time    = c(-1.386294, 0.707293),
-                                   MAP.prior         = FALSE,
-                                   pars              = c("tau.study","log.hazard.pred"),
-                                   R.seed            = 10,
-                                   bugs.seed         = 12
-)
-
-# save.image("TTEAnalysis.RData")
-
 rmat <- matrix(FIOCCO.n.events, nrow = 12, ncol = 10, byrow = F)
 Emat <- matrix(FIOCCO.exp.time, nrow = 12, ncol = 10, byrow = F)
 
-for(i in 1:12){
-  #EB
-  loghaz <- analysis_EB$BUGSoutput$sims.list$log.hazard.pred[,,i]
-  tt <- round(exp(c(median(loghaz), quantile(loghaz, c(0.025, 0.975)))), 3)
-  res1 <- paste(tt[1], " (", tt[2], ", ", tt[3], ")", sep="")
-  #MAP
-  loghaz <- analysis_MAP$BUGSoutput$sims.list$log.hazard.pred[,,i]
-  tt <- round(exp(c(median(loghaz), quantile(loghaz, c(0.025, 0.975)))), 3)
-  res2 <- paste(tt[1], " (", tt[2], ", ", tt[3], ")", sep="")
-  #Vague
-  loghaz <- analysis_vague$BUGSoutput$sims.list$log.hazard.pred[,,i]
-  tt <- round(exp(c(median(loghaz), quantile(loghaz, c(0.025, 0.975)))), 3)
-  res3 <- paste(tt[1], " (", tt[2], ", ", tt[3], ")", sep="")
-  
-  
-  fit <- meta::metarate(rmat[i, 1:9], Emat[i, 1:9])
-  hrate <- round(exp(fit$TE.fixed),3)
-  crate <- round(rmat[i, 10]/Emat[i, 10],3)
-  
-  out_int <- tibble(Interval = i, Hist = hrate, Curr = crate, w_eb = w_eb[i], EB = res1, MAP = res2, Vague = res3)
-  
-  if(i==1){resdt <- out_int}
-  else(resdt <- rbind(resdt, out_int))
+map_lst <- NULL
+for(l in 1:12){
+  #meta analysis of historical data
+  histdt <- tibble(study = 1:9, r = rmat[l, 1:9], exp = Emat[l, 1:9])
+  #MAP prior
+  map_mcmc <- gMAP(r ~ 1 + offset(log(exp)) | study, data = histdt, family = poisson, 
+                   tau.dist = "HalfNormal", tau.prior = cbind(0, 0.5),
+                   beta.prior=cbind(0, 10))
+  map_hat <- automixfit(map_mcmc)
+  map_lst[[l]] <- map_hat
+  #vague prior
+  # f_v <- mixgamma(c(1,hrate,1), param = "mn", likelihood = "poisson")
 }
 
+# save.image("TTEAnalysis_GP.RData")
 
-library(kableExtra)
+w_eb <- rep(-1, 12)
+for(l in 1:12){
+  histdt <- tibble(study = 1:9, r = rmat[l, 1:9], exp = Emat[l, 1:9])
+  metafit <- meta::metarate(r, exp, data=histdt)
+  hrate <- round(exp(metafit$TE.fixed),3)
+  crate <- round(rmat[l, 10]/Emat[l, 10],3)
+  map_hat <- map_lst[[l]]
+  #calculate ppp and pick the optimal w_V
+  w <- seq(0, 1, 0.01)
+  ppp <- rep(NA, length(w))
+  for(i in 1:length(w)){
+    rmap <- robustify(map_hat, weight=w[i], mean=summary(map_hat)[4], n=1)
+    rmap_pred <- preddist(rmap, n=rmat[l, 10])
+    p_lower <- pmix(rmap_pred, crate)
+    ppp[i] <- ifelse(p_lower < 0.5, 2*p_lower, 2*(1-p_lower))
+  }
+  pppdt <- tibble(w, ppp) %>% mutate(pass=(ppp >= ppp_cut)) %>% filter(pass)
+  w_eb[l] <- ifelse(nrow(pppdt) == 0, 1, min(pppdt$w))
+  
+  #EB
+  rmap <- robustify(map_hat, weight=w_eb[l], mean=summary(map_hat)[4], n=1)
+  #IMPORTANT: m must to be in this form to ensure that m*n is an integer for dnbinom function
+  postmix_rmap <- postmix(rmap, n = Emat[l, 10] , m = rmat[l, 10]/Emat[l, 10])
+  post_rmap_c <- rmix(mix = postmix_rmap, n = 20000)
+  tt <- round(quantile(post_rmap_c, c(0.5, 0.025, 0.975)), 3)
+  res1 <- paste(tt[1], " (", tt[2], ", ", tt[3], ")", sep="")
+  #MAP
+  rmap <- robustify(map_hat, weight=0, mean=summary(map_hat)[4], n=1)
+  postmix_rmap <- postmix(rmap, n = Emat[l, 10] , m = rmat[l, 10]/Emat[l, 10])
+  post_rmap_c <- rmix(mix = postmix_rmap, n = 20000)
+  tt <- round(quantile(post_rmap_c, c(0.5, 0.025, 0.975)), 3)
+  res2 <- paste(tt[1], " (", tt[2], ", ", tt[3], ")", sep="")
+  #Vague
+  rmap <- robustify(map_hat, weight=1, mean=summary(map_hat)[4], n=1)
+  postmix_rmap <- postmix(rmap, n = Emat[l, 10] , m = rmat[l, 10]/Emat[l, 10])
+  post_rmap_c <- rmix(mix = postmix_rmap, n = 20000)
+  tt <- round(quantile(post_rmap_c, c(0.5, 0.025, 0.975)), 3)
+  res3 <- paste(tt[1], " (", tt[2], ", ", tt[3], ")", sep="")
+  
+  # out_int <- tibble(Interval = l, MetaMean = hrate, HistMean = summary(map_hat)[1], HistMedian = summary(map_hat)[4], HistSD = summary(map_hat)[2],
+  #                   Curr = crate, w_eb = w_eb[l], EB = res1, MAP = res2, Vague = res3)
+  out_int <- tibble(Interval = l, HistMedian = round(summary(map_hat)[4], 3),
+                    Curr = crate, w_eb = w_eb[l], EB = res1, MAP = res2, Vague = res3)
+  if(l==1){resdt <- out_int}
+  else(resdt <- rbind(resdt, out_int))
+}
+resdt
+
 kableExtra::kbl(resdt, format="latex")
 
-#########density plots##############
+#########################################
+#########################################
+#########################################
+#plot
+l <- 6
+map_hat <- map_lst[[l]]
+
 #EB
-loghaz <- analysis_EB$BUGSoutput$sims.list$log.hazard.pred[,,6]
-dt1 <- tibble(Method="EB-rMAP", Sample=exp(loghaz))
+rmap <- robustify(map_hat, weight=w_eb[l], mean=summary(map_hat)[4], n=1)
+postmix_rmap <- postmix(rmap, n = Emat[l, 10] , m = rmat[l, 10]/Emat[l, 10])
+post_rmap_c <- rmix(mix = postmix_rmap, n = 20000)
+dt1 <- tibble(Method="EB-rMAP", Sample=post_rmap_c)
 #MAP
-loghaz <- analysis_MAP$BUGSoutput$sims.list$log.hazard.pred[,,6]
-dt2 <- tibble(Method="MAP (EX)", Sample=exp(loghaz))
+rmap <- robustify(map_hat, weight=0, mean=summary(map_hat)[4], n=1)
+postmix_rmap <- postmix(rmap, n = Emat[l, 10] , m = rmat[l, 10]/Emat[l, 10])
+post_rmap_c <- rmix(mix = postmix_rmap, n = 20000)
+dt2 <- tibble(Method="MAP (EX)", Sample=post_rmap_c)
 #Vague
-loghaz <- analysis_vague$BUGSoutput$sims.list$log.hazard.pred[,,6]
-dt3 <- tibble(Method="Vague (NEX)", Sample=exp(loghaz))
+rmap <- robustify(map_hat, weight=1, mean=summary(map_hat)[4], n=1)
+postmix_rmap <- postmix(rmap, n = Emat[l, 10] , m = rmat[l, 10]/Emat[l, 10])
+post_rmap_c <- rmix(mix = postmix_rmap, n = 20000)
+dt3 <- tibble(Method="Vague (NEX)", Sample=post_rmap_c)
 
 plotdt <- rbind(dt1, dt2, dt3)
 
@@ -233,66 +129,3 @@ plotdt %>%
         axis.text = element_text(size=10),
         axis.title = element_text(size=10))
 dev.off()
-
-
-
-########################################################
-########################################################
-########################################################
-########################################################
-#consolidate data
-# int1 <- 1:4
-# int2 <- 5:12
-# 
-# tt <- matrix(FIOCCO.n.events, nrow = 12, ncol = 10, byrow = F)
-# rdata <- c(rbind(colSums(tt[int1,]), colSums(tt[int2,])))
-# 
-# tt <- matrix(FIOCCO.exp.time, nrow = 12, ncol = 10, byrow = F)
-# Edata <- c(rbind(colSums(tt[int1,]), colSums(tt[int2,])))
-
-# FIOCCO.MAP.Prior <- MAC.Surv.anal_jags(Nobs              = 18,
-#                                        study             = sort(rep(1:9,2)),
-#                                        Nstudies          = 9,
-#                                        Nint              = 2,
-#                                        Ncov              = 1,
-#                                        Nout              = 1,
-#                                        int.low           = rep(1:2,9),
-#                                        int.high          = rep(1:2,9),
-#                                        int.length        = c(1,3),
-#                                        n.events          = rdata[1:18],
-#                                        exp.time          = Edata[1:18],
-#                                        X                 = matrix(0,18,1),
-#                                        Prior.mu.mean.ex  = c(0,10), 
-#                                        Prior.rho.ex      = c(0,10),
-#                                        # prior.mu.mean.nex = matrix(rep(0,18), nrow=9, ncol=2),
-#                                        # prior.mu.sd.nex   = matrix(rep(1,18), nrow=9, ncol=2),
-#                                        # p.exch            = matrix(rep(1,18), nrow=9),
-#                                        prior.mu.mean.nex = matrix(rep(0,20), nrow=10, ncol=2),
-#                                        prior.mu.sd.nex   = matrix(rep(2,20), nrow=10, ncol=2),
-#                                        p.exch            = matrix(rep(1,20), nrow=10),
-#                                        Prior.beta        = matrix(c(0,10), nrow=2), 
-#                                        beta.cutoffs      = 0,
-#                                        Prior.tau.study   = c(0, 0.5), 
-#                                        Prior.tau.time    = c(-1.386294, 0.707293),
-#                                        MAP.prior         = TRUE,
-#                                        pars              = c("tau.study","log.hazard.pred"),
-#                                        R.seed            = 10,
-#                                        bugs.seed         = 12
-# )
-
-
-# #Poisson-Gamma model?
-# haz <- exp(loghaz)
-# poisson_mix <- RBesT::automixfit(haz, type="gamma")
-# likelihood(poisson_mix) <- "poisson"
-# preddist(poisson_mix, n=1)
-# 
-# mixgamma(c(1,1,1), param =  ,likelihood = "poisson")
-# 
-# sample2 <- rmix(poisson_mix,10000)
-# tb2 <- tibble(Mix="Gamma", x=sample2)
-# tb1 <- tibble(Mix="Normal", x=sample1)
-# 
-# plotdt <- rbind(tb1, tb2)
-# plotdt %>%
-#   ggplot(aes(x=x, color=Mix)) + geom_density()
