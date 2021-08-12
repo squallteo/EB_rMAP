@@ -63,7 +63,6 @@ for(l in 1:12){
   
   #EB
   rmap <- robustify(map_hat, weight=w_eb[l], mean=summary(map_hat)[4], n=1)
-  #IMPORTANT: m must to be in this form to ensure that m*n is an integer for dnbinom function
   postmix_rmap <- postmix(rmap, n = Emat[l, 10] , m = rmat[l, 10]/Emat[l, 10])
   post_rmap_c <- rmix(mix = postmix_rmap, n = 20000)
   tt <- round(quantile(post_rmap_c, c(0.5, 0.025, 0.975)), 3)
