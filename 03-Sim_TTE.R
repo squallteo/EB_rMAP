@@ -42,8 +42,8 @@ for(h in 1:length(curr_haz)){
       ppp <- rep(NA, length(w))
       for(i in 1:length(w)){
         rmap <- robustify(map_hat, weight=w[i], mean=summary(map_hat)[4], n=1)
-        rmap_pred <- preddist(rmap, n=curr_r)
-        p_lower <- pmix(rmap_pred, curr_r/curr_exp)
+        rmap_pred <- preddist(rmap, n=curr_exp)
+        p_lower <- pmix(rmap_pred, curr_r)
         ppp[i] <- ifelse(p_lower < 0.5, 2*p_lower, 2*(1-p_lower))
       }
       pppdt <- tibble(w, ppp) %>% mutate(pass=(ppp >= ppp_cut)) %>% filter(pass)
@@ -82,8 +82,8 @@ for(h in 1:length(curr_haz)){
 #   if(i==1){p1 <- tt}
 #   else{p1 <- cbind(p1, tt)}
 # }
-# write.csv(p1, "p1.csv")
-# 
+# # write.csv(p1, "p1.csv")
+# # 
 # for(i in 4:5){
 #   tt <- outdt %>% filter(Hazard == curr_haz[i]) %>% mutate(Bias=round(abs(Bias*1000),1), MSE=round(MSE*1000,1)) %>% select(PoS, Bias, MSE)
 #   if(i==4){p2 <- tt}
