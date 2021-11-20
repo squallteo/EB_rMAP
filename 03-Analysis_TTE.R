@@ -128,3 +128,14 @@ plotdt %>%
         axis.text = element_text(size=10),
         axis.title = element_text(size=10))
 dev.off()
+
+############################################
+
+tt <- as_tibble(matrix(paste(FIOCCO.n.events, FIOCCO.exp.time, sep="/"), nrow = 12, ncol = 10, byrow = F))
+colnames(tt) <- c(1:9, "New")
+interval <- c("0.00-0.25", "0.25-0.50", "0.50-0.75", "0.75-1.00",
+              "1.00-1.25", "1.25-1.50", "1.50-1.75", "1.75-2.08",
+              "2.08-2.50", "2.50-2.92", "2.92-3.33", "3.33-4.00")
+RNdt <- tt %>% mutate(Interval=interval) %>% relocate(Interval)
+
+kableExtra::kbl(RNdt, format="latex")
