@@ -7,28 +7,29 @@ set.seed(712)
 
 ppp_cutvec <- c(0.8, 0.85, 0.9) #gamma for ppp
 n_cvec <- c(25, 50, 100)
-y_cvec <- seq(-60, -40, 0.1)
-m_v <- -50; sd_v <- 50 #mean and sd of vague beta prior for mu_c
+y_cvec <- seq(-80, -20, 0.5)
+m_v <- -50; sd_v <- 88 #mean and sd of vague beta prior for mu_c
 #derive and approximate MAP prior
-dt <- crohn[-5,]
-sigma <- 40
+dt <- crohn
+sigma <- 88
 dt$se_yh <- sigma/sqrt(dt$n)
 #meta analysis of historical data
-# with(dt, meta::metamean(n = n, mean = y, sd = rep(sigma,length(study))))
-#point est is -46.8. Decide to consider true current mean from -60 to -40
+# tt <- with(dt, meta::metamean(n = n, mean = y, sd = rep(sigma,length(study))), prediction = T5)
+# tt$lower.predict; tt$upper.predict
+#point est is -49.9. 95% predictive interval is -83.1 to -16.7. The range of y_c is set to -80 to -20
 map_mcmc <- gMAP(cbind(y, se_yh) ~ 1 | study, 
-                  #weight = n,
+                  weight = n,
                   data=dt,
                   family=gaussian,
-                  beta.prior=cbind(-50, sigma),
-                  tau.dist="HalfNormal",tau.prior=cbind(0,5))
+                  beta.prior=cbind(0, sigma),
+                  tau.dist="HalfNormal",tau.prior=cbind(0,sigma/2))
 #approximate the MAP
 map_hat <- automixfit(map_mcmc)
 sigma(map_hat) <- sigma
 ess(map_hat)
 
-f_v <- mixnorm(c(1, -50, 1), sigma=sigma, param="mn")
-ess(f_v)
+# f_v <- mixnorm(c(1, -50, 1), sigma=sigma, param="mn")
+# ess(f_v)
 
 for(k in 1:length(ppp_cutvec)){
   ppp_cut <- ppp_cutvec[k]
@@ -61,20 +62,20 @@ for(k in 1:length(ppp_cutvec)){
 plotlst <- list()
 plotlst[[1]] <-
 outdt %>% filter(Gamma==0.85) %>%
-  ggplot(aes(x=y_c, y = w_eb, color=factor(SS))) + geom_line(size=1) + geom_vline(xintercept=-46.8, linetype="dashed") +
+  ggplot(aes(x=y_c, y = w_eb, color=factor(SS))) + geom_line(size=1) + geom_vline(xintercept=-49.9, linetype="dashed") +
   xlab("Observed Mean Response") + ylab("EB-rMAP Weight") + theme_bw() + ggtitle("Gamma: 0.85") + 
   scale_color_discrete(name="Sample\nSize")
 
 plotlst[[2]] <-
 outdt %>% filter(SS==50) %>%
-  ggplot(aes(x=y_c, y = w_eb, color=factor(Gamma))) + geom_line(size=1) + geom_vline(xintercept=-46.8, linetype="dashed") +
+  ggplot(aes(x=y_c, y = w_eb, color=factor(Gamma))) + geom_line(size=1) + geom_vline(xintercept=-49.9, linetype="dashed") +
   xlab("Observed Mean Response") + ylab("EB-rMAP Weight") + theme_bw() + ggtitle("Current Sample Size: 50") + 
   scale_color_discrete(name="Gamma")
 
 # save.image("CompareWeights_Normal.RData")
 
 library(ggpubr)
-png("EBweights.png", width = 2700, height = 1000, res = 300)
+png("EBweights_Normal.png", width = 2700, height = 1000, res = 300)
 ggarrange(plotlst[[1]], plotlst[[2]],
           nrow = 1, ncol = 2)
 dev.off()
