@@ -7,15 +7,22 @@ set.seed(712)
 
 #current control
 n_c <- 50
-pvec_c <- seq(0.20, 0.32, 0.01)
-w_vec <- c(0, 0.25, 0.5, 0.75, 1) #w_v in rMAP
+pvec_c <- seq(0.10, 0.50, 0.02)
+w_vec <- c(0, 0.5, 1) #w_v in rMAP
 a_c <- 1; b_c <- 1 #vague beta prior for p(c)
 #EB rMAP parameters
 ppp_cut <- 0.8
 
+#current treatment
+n_t <- 100
+es <- 0
+# es <- 0.2
+#prior of treatment
+prior_t <- mixbeta(c(1, 1, 1))
+
 #decision rule to claim trial success: pr(p_t - p_c > Qcut) > Pcut
-Qcut <- 0.2
-Pcut <- 0.9
+Qcut <- 0
+Pcut <- 0.95
 # success_rule = decision2S(pc = 0.95, qc = 0, lower.tail = F, link = "identity")
 npostdist <- 20000
 nsim <- 5000
@@ -63,7 +70,7 @@ ggplot(wdt, aes(x=y, y = w_eb)) + geom_line()
 #################################
 #################################
 ncores <- min(parallel::detectCores(), 40)
-cl = makeCluster(ncores-1)
+cl <- makeCluster(ncores-1)
 registerDoParallel(cl)
 
 for(p in 1:length(pvec_c)){
@@ -75,6 +82,11 @@ for(p in 1:length(pvec_c)){
       set.seed(s+712)
       #current control arm
       y_c <- rbinom(1, n_c, p_c)
+      #current treatment arm
+      y_t <- rbinom(1, n_t, p_c+es)
+      postmix_t <- postmix(prior_t, r = y_t, n = n_t)
+      post_t <- rmix(mix = postmix_t, n = npostdist)
+      
       #extract w_eb corresponding to observed data
       w_eb <- as.numeric(wdt %>% filter(y==y_c) %>% select(w_eb))
       
@@ -87,21 +99,24 @@ for(p in 1:length(pvec_c)){
         rmap_c <- robustify(map_hat, weight = w_v, mean = a_c/(a_c+b_c), n = a_c+b_c- 1)
         postmix_rmap_c <- postmix(rmap_c,r = y_c, n = n_c)
         post_rmap_c <- rmix(mix = postmix_rmap_c, n = npostdist)
-        estvec[w] <- median(post_rmap_c)
         
-        dvec[w] <- (mean(post_rmap_c > Qcut) > Pcut)
+        tt <- post_t - post_rmap_c
+        estvec[w] <- median(tt)
+        dvec[w] <- (mean(tt > Qcut) > Pcut)
       }
       
       c(dvec, estvec)
+      # c(y_c, w_rmap[1], dvec, estvec)
       
     }
   
   tt <- tibble(Rate=p_c, Method = c("EB", w_vec),
                PoS = colMeans(results[,1:(length(w_vec)+1)], na.rm = T),
                Est = colMeans(results[,-(1:(length(w_vec)+1))], na.rm = T), 
-               Bias = Est-Rate, 
+               Bias = Est-es, 
                Var = apply(results[,-(1:(length(w_vec)+1))], 2, var, na.rm=T),
-               MSE = Bias^2 + Var)
+               MSE = Bias^2 + Var,
+               Nsim = nrow(results))
   if(p==1) {outdt <- tt}
   else {outdt <- rbind(outdt, tt)}
   
@@ -111,30 +126,57 @@ for(p in 1:length(pvec_c)){
 plotdt <- outdt %>% filter(!(Method %in% c("0.25", "0.75")))
 
 plotlst <- list()
-
-plotlst[[1]] <- 
-  ggplot(plotdt, aes(x=Rate, y=PoS, color = Method)) + geom_line(size=1) + geom_vline(xintercept=0.25, linetype="dashed") +
-  xlab("True Current Rate") + ylab("Probability of Success") + theme_bw() + 
-  scale_color_discrete(name="Mixture\nWeight") +
-  theme(legend.position = "none")
-
-plotlst[[2]] <- 
-  ggplot(plotdt, aes(x=Rate, y=abs(Bias), color = Method)) + geom_line(size=1) + geom_vline(xintercept=0.25, linetype="dashed") +
-  xlab("True Current Rate") + ylab("Absolute Bias") + theme_bw() + 
-  scale_color_discrete(name="Mixture\nWeight") +
-  theme(legend.position = "none")
-
-plotlst[[3]] <- 
-  ggplot(plotdt, aes(x=Rate, y=MSE, color = Method)) + geom_line(size=1) + geom_vline(xintercept=0.25, linetype="dashed") +
-  xlab("True Current Rate") + ylab("Mean Square Error") + theme_bw() + 
-  scale_color_discrete(name="Mixture\nWeight")
-
 library(ggpubr)
-png("Sim_Bin.png", width = 2700, height = 1000, res = 300)
-ggarrange(plotlst[[1]], plotlst[[2]], plotlst[[3]],
-          nrow = 1, ncol = 3)
-dev.off()
+
+if(es==0){
+  plotlst[[1]] <- 
+    ggplot(plotdt, aes(x=Rate, y=PoS, color = Method)) + geom_line(size=1) + geom_vline(xintercept=0.25, linetype="dashed") +
+    xlab("True Current Rate") + ylab("Error Rate") + theme_bw() + 
+    scale_color_discrete(name="Mixture\nWeight") +
+    theme(legend.position = "none")
+  
+  plotlst[[2]] <- 
+    ggplot(plotdt, aes(x=Rate, y=abs(Bias), color = Method)) + geom_line(size=1) + geom_vline(xintercept=0.25, linetype="dashed") +
+    xlab("True Current Rate") + ylab("Absolute Bias") + theme_bw() + 
+    scale_color_discrete(name="Mixture\nWeight") +
+    theme(legend.position = "none")
+  
+  plotlst[[3]] <- 
+    ggplot(plotdt, aes(x=Rate, y=MSE, color = Method)) + geom_line(size=1) + geom_vline(xintercept=0.25, linetype="dashed") +
+    xlab("True Current Rate") + ylab("Mean Square Error") + theme_bw() + 
+    scale_color_discrete(name="Mixture\nWeight")
+  
+  png("Sim_Bin_Null.png", width = 2700, height = 1000, res = 300)
+  ggarrange(plotlst[[1]], plotlst[[2]], plotlst[[3]],
+            nrow = 1, ncol = 3)
+  dev.off()
+  
+  # save.image("BinSim_Null.RData")
+} else{
+  plotlst[[1]] <- 
+    ggplot(plotdt, aes(x=Rate, y=PoS, color = Method)) + geom_line(size=1) + geom_vline(xintercept=0.25, linetype="dashed") +
+    xlab("True Current Rate") + ylab("Probability of Success") + theme_bw() + 
+    scale_color_discrete(name="Mixture\nWeight") +
+    theme(legend.position = "none")
+  
+  plotlst[[2]] <- 
+    ggplot(plotdt, aes(x=Rate, y=abs(Bias), color = Method)) + geom_line(size=1) + geom_vline(xintercept=0.25, linetype="dashed") +
+    xlab("True Current Rate") + ylab("Absolute Bias") + theme_bw() + 
+    scale_color_discrete(name="Mixture\nWeight") +
+    theme(legend.position = "none")
+  
+  plotlst[[3]] <- 
+    ggplot(plotdt, aes(x=Rate, y=MSE, color = Method)) + geom_line(size=1) + geom_vline(xintercept=0.25, linetype="dashed") +
+    xlab("True Current Rate") + ylab("Mean Square Error") + theme_bw() + 
+    scale_color_discrete(name="Mixture\nWeight")
+  
+  png("Sim_Bin_Alt.png", width = 2700, height = 1000, res = 300)
+  ggarrange(plotlst[[1]], plotlst[[2]], plotlst[[3]],
+            nrow = 1, ncol = 3)
+  dev.off()
+  
+  # save.image("BinSim_Alt.RData")
+}
 
 
-# save.image("BinSim.RData")
 
