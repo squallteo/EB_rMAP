@@ -29,7 +29,7 @@ nsim <- 5000
 #################################
 #################################
 #meta analysis of historical data
-# with(dt, meta::metaprop(event = r, n = n, method = "Inverse"))
+with(AS, meta::metaprop(event = r, n = n, method = "Inverse", level.comb = 0.99))
 #point est is 0.25 (0.202, 0.312). Decide to consider true current rate from 0.2 to 0.32
 #derive and approximate MAP prior
 map_mcmc <- gMAP(cbind(r, n-r) ~ 1 | study,
@@ -178,5 +178,14 @@ if(es==0){
   # save.image("BinSim_Alt.RData")
 }
 
+load("BinSim_Null.RData")
+dt0 <- outdt %>% filter(Rate %in% c(0.1, 0.2, 0.26, 0.36, 0.5)) %>% 
+  select(Rate, Method, PoS, Bias, MSE) %>% rename(ErrorRate=PoS)
 
+load("BinSim_Alt.RData")
+dt1 <- outdt %>% filter(Rate %in% c(0.1, 0.2, 0.26, 0.36, 0.5)) %>% 
+  select(PoS, Bias, MSE)
+
+tt <- cbind(dt0, dt1)
+write.csv(tt, "BinSim.csv", row.names = F)
 

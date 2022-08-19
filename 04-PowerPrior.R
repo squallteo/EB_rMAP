@@ -65,7 +65,7 @@ for(p in 1:length(pvec_c)){
 }
 
 
-plotdt <- outdt
+plotdt <- outdt %>% filter(Rate %in% c(0.1, 0.2, 0.26, 0.36, 0.5))
 plotlst <- list()
 library(ggpubr)
 

@@ -34,6 +34,8 @@ nsim <- 5000
 dt <- crohn
 sigma <- 88
 dt$se_yh <- sigma/sqrt(dt$n)
+#meta analysis of historical data
+# with(dt, meta::metamean(n = n, mean = y, sd = rep(sigma,length(study)), level.comb = 0.99))
 #derive and approximate MAP prior
 map_mcmc <- gMAP(cbind(y, se_yh) ~ 1 | study, 
                  weight = n,
@@ -189,6 +191,13 @@ if(es==0){
 }
 
 
+load("NormalSim_Null.RData")
+dt0 <- outdt %>% filter(Mean %in% c(-80, -60, -50, -40, -20)) %>% 
+  select(Mean, Method, PoS, Bias, MSE) %>% rename(ErrorRate=PoS)
 
+load("NormalSim_Alt.RData")
+dt1 <- outdt %>% filter(Mean %in% c(-80, -60, -50, -40, -20)) %>% 
+  select(PoS, Bias, MSE)
 
-
+tt <- cbind(dt0, dt1)
+write.csv(tt, "NormalSim.csv", row.names = F)
