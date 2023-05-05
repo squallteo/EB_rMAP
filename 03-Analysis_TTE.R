@@ -26,77 +26,139 @@ FIOCCO.exp.time <- c(  9.4,  8.8,  7.9,  7.0,  6.1,  5.8,  5.8,  7.3,  8.8,  7.6
 rmat <- matrix(FIOCCO.n.events, nrow = 12, ncol = 10, byrow = F)
 Emat <- matrix(FIOCCO.exp.time, nrow = 12, ncol = 10, byrow = F)
 
-map_lst <- NULL
-for(l in 1:12){
-  #meta analysis of historical data
-  histdt <- tibble(study = 1:9, r = rmat[l, 1:9], exp = Emat[l, 1:9])
-  #MAP prior
-  map_mcmc <- gMAP(r ~ 1 + offset(log(exp)) | study, data = histdt, family = poisson, 
-                   tau.dist = "HalfNormal", tau.prior = cbind(0, 0.5),
-                   beta.prior=cbind(0, 10))
-  map_hat <- automixfit(map_mcmc)
-  map_lst[[l]] <- map_hat
-  #vague prior
-  # f_v <- mixgamma(c(1,hrate,1), param = "mn", likelihood = "poisson")
-}
+#one interval analysis from year 0 to 1.5
+rvec <- colSums(rmat[1:6,])
+Evec <- colSums(Emat[1:6,])
 
-# save.image("TTEAnalysis_GP.RData")
+histdt <- tibble(study = 1:9, r = rvec[1:9], exp = Evec[1:9])
+meta::metarate(r, exp, study, data=histdt)
 
-w_eb <- rep(-1, 12)
-for(l in 1:12){
-  histdt <- tibble(study = 1:9, r = rmat[l, 1:9], exp = Emat[l, 1:9])
-  metafit <- meta::metarate(r, exp, data=histdt)
-  hrate <- round(exp(metafit$TE.fixed),3)
-  crate <- round(rmat[l, 10]/Emat[l, 10],3)
-  map_hat <- map_lst[[l]]
-  #calculate ppp and pick the optimal w_V
-  w <- seq(0, 1, 0.01)
-  ppp <- rep(NA, length(w))
-  for(i in 1:length(w)){
-    rmap <- robustify(map_hat, weight=w[i], mean=summary(map_hat)[4], n=1)
-    rmap_pred <- preddist(rmap, n=rmat[l, 10])
-    p_lower <- pmix(rmap_pred, crate)
-    ppp[i] <- ifelse(p_lower < 0.5, 2*p_lower, 2*(1-p_lower))
+map_mcmc <- gMAP(r ~ 1 + offset(log(exp)) | study, data = histdt, family = poisson, 
+                 tau.dist = "HalfNormal", tau.prior = cbind(0, 0.5),
+                 beta.prior=cbind(0, 10))
+map_hat <- automixfit(map_mcmc)
+vague <- mixgamma(c(1, summary(map_hat)[1], 1), param = "mn")
+
+sample_MAP <- tibble(x=rmix(map_hat,100000), Prior = "MAP")
+sample_vague <- tibble(x=rmix(vague,100000), Prior = "Vague")
+
+(p1 <-
+rbind(sample_MAP, sample_vague) %>% 
+  ggplot(aes(x=x, fill=Prior)) + geom_density(alpha=0.5) +
+  scale_x_continuous(limits = c(0,5)) + xlab("Hazard Rate") +
+  theme_bw() +
+  theme(axis.title = element_text(face="bold",size=20),
+        axis.text = element_text(size=20),
+        legend.title=element_text(size=20,face="bold"),
+        legend.text=element_text(size=20),
+        legend.position = c(0.5, 0.5)
+  )
+)
+
+
+ppp_cutvec <- c(0.85, 0.9, 0.95)
+y_cvec <- seq(0, 51, 1)
+n_cvec <- c(Evec[10])
+
+for(j in 1:length(n_cvec)){
+  n_c <- n_cvec[j]
+  for(k in 1:length(ppp_cutvec)){
+    ppp_cut <- ppp_cutvec[k]
+    for(y in 1:length(y_cvec)){
+      y_c <- y_cvec[y]
+      #calculate ppp and pick the optimal w_V
+      w <- seq(0, 1, 0.01)
+      ppp <- rep(NA, length(w))
+      for(i in 1:length(w)){
+        rmap <- robustify(map_hat, weight=w[i], mean=summary(map_hat)[1], n=1)
+        rmap_pred <- preddist(rmap, n=n_c)
+        p_lower <- pmix(rmap_pred, y_c)
+        ppp[i] <- ifelse(p_lower < 0.5, 2*p_lower, 2*(1-p_lower))
+      }
+      
+      pppdt <- tibble(w, ppp) %>% mutate(pass=(ppp >= ppp_cut)) %>% filter(pass)
+      w_eb <- ifelse(nrow(pppdt) == 0, 1, min(pppdt$w))
+      ppp_eb <- as.numeric(pppdt %>% filter(w==w_eb) %>% select(ppp))
+      tt <- tibble(y_c, w_eb, ppp_eb)
+      if(y==1){wdt <- tt}
+      else {wdt <- rbind(wdt, tt)}
+    }
+    tt <- wdt %>% mutate(Gamma = ppp_cut, SS = n_c)
+    if(k==1 & j==1){outdt <- tt}
+    else{outdt <- rbind(outdt, tt)}
   }
-  pppdt <- tibble(w, ppp) %>% mutate(pass=(ppp >= ppp_cut)) %>% filter(pass)
-  w_eb[l] <- ifelse(nrow(pppdt) == 0, 1, min(pppdt$w))
-  
-  #EB
-  rmap <- robustify(map_hat, weight=w_eb[l], mean=summary(map_hat)[4], n=1)
-  postmix_rmap <- postmix(rmap, n = Emat[l, 10] , m = rmat[l, 10]/Emat[l, 10])
-  post_rmap_c <- rmix(mix = postmix_rmap, n = 20000)
-  tt <- round(quantile(post_rmap_c, c(0.5, 0.025, 0.975)), 3)
-  res1 <- paste(tt[1], " (", tt[2], ", ", tt[3], ")", sep="")
-  #MAP
-  rmap <- robustify(map_hat, weight=0, mean=summary(map_hat)[4], n=1)
-  postmix_rmap <- postmix(rmap, n = Emat[l, 10] , m = rmat[l, 10]/Emat[l, 10])
-  post_rmap_c <- rmix(mix = postmix_rmap, n = 20000)
-  tt <- round(quantile(post_rmap_c, c(0.5, 0.025, 0.975)), 3)
-  res2 <- paste(tt[1], " (", tt[2], ", ", tt[3], ")", sep="")
-  #Vague
-  rmap <- robustify(map_hat, weight=1, mean=summary(map_hat)[4], n=1)
-  postmix_rmap <- postmix(rmap, n = Emat[l, 10] , m = rmat[l, 10]/Emat[l, 10])
-  post_rmap_c <- rmix(mix = postmix_rmap, n = 20000)
-  tt <- round(quantile(post_rmap_c, c(0.5, 0.025, 0.975)), 3)
-  res3 <- paste(tt[1], " (", tt[2], ", ", tt[3], ")", sep="")
-  
-  # out_int <- tibble(Interval = l, MetaMean = hrate, HistMean = summary(map_hat)[1], HistMedian = summary(map_hat)[4], HistSD = summary(map_hat)[2],
-  #                   Curr = crate, w_eb = w_eb[l], EB = res1, MAP = res2, Vague = res3)
-  out_int <- tibble(Interval = l, HistMedian = round(summary(map_hat)[4], 3),
-                    Curr = crate, w_eb = w_eb[l], EB = res1, MAP = res2, Vague = res3)
-  if(l==1){resdt <- out_int}
-  else(resdt <- rbind(resdt, out_int))
 }
-resdt
 
-kableExtra::kbl(resdt, format="latex")
 
-#########################################
-#########################################
-#########################################
-#plot
-l <- 6
-map_hat <- map_lst[[l]]
+(p2 <-
+outdt %>% mutate(hrate = y_c/SS) %>% filter(SS==117.6) %>%
+  ggplot(aes(x=y_c, y = w_eb, color=factor(Gamma))) + geom_line(size=1) + geom_vline(xintercept=0.37*n_c, linetype="dashed") +
+  scale_x_continuous(breaks = seq(0, 50, 5)) + 
+  xlab("Observed Number of Events") + ylab("EB-rMAP Weight") + theme_bw() +  
+  scale_color_discrete(name="Gamma") + 
+  theme(axis.title = element_text(face="bold",size=20),
+        axis.text = element_text(size=20),
+        legend.title=element_text(size=20,face="bold"),
+        legend.text=element_text(size=20),
+        legend.position = c(0.25, 0.25)
+  )
+    
+)
+
+
+# png(filename = "Analysis1.png", width = 1200, height = 600)
+# gridExtra::grid.arrange(p1, p2, nrow = 1)
+# dev.off()
+
+outdt %>% filter(y_c==rvec[10])
+
+
+
+#use gamma=0.9, w_eb = 0.54 when r = 32
+w_eb <- 0.54
+#EB
+rmap <- robustify(map_hat, weight=w_eb, mean=summary(map_hat)[4], n=1)
+postmix_rmap <- postmix(rmap, n = Evec[10], m = rvec[10]/Evec[10])
+post_rmap_c <- rmix(mix = postmix_rmap, n = 20000)
+tt <- round(quantile(post_rmap_c, c(0.5, 0.025, 0.975)), 3)
+res1 <- paste(tt[1], " (", tt[2], ", ", tt[3], ")", sep="")
+dt1 <- tibble(Method="EB-rMAP", Sample=post_rmap_c)
+#MAP
+rmap <- robustify(map_hat, weight=0, mean=summary(map_hat)[4], n=1)
+postmix_rmap <- postmix(rmap, n = Evec[10], m = rvec[10]/Evec[10])
+post_rmap_c <- rmix(mix = postmix_rmap, n = 20000)
+tt <- round(quantile(post_rmap_c, c(0.5, 0.025, 0.975)), 3)
+res2 <- paste(tt[1], " (", tt[2], ", ", tt[3], ")", sep="")
+dt2 <- tibble(Method="MAP", Sample=post_rmap_c)
+#Vague
+rmap <- robustify(map_hat, weight=1, mean=summary(map_hat)[4], n=1)
+postmix_rmap <- postmix(rmap, n = Evec[10], m = rvec[10]/Evec[10])
+post_rmap_c <- rmix(mix = postmix_rmap, n = 20000)
+tt <- round(quantile(post_rmap_c, c(0.5, 0.025, 0.975)), 3)
+res3 <- paste(tt[1], " (", tt[2], ", ", tt[3], ")", sep="")
+dt3 <- tibble(Method="Vague", Sample=post_rmap_c)
+
+plotdt <- rbind(dt1, dt2, dt3)
+
+png("HazardDensity.png", width = 1200, height = 1000, res = 300)
+plotdt %>% 
+  ggplot(aes(x=Sample, color=Method)) + geom_density(size=1) +
+  xlab("Hazard Rate") + ylab("Density") + theme_bw() +
+  scale_x_continuous(labels = seq(0,1.5, 0.25), breaks = seq(0,1.5, 0.25)) +
+  theme(legend.position = c(0.7, 0.7),
+        legend.text = element_text(size=10),
+        legend.title = element_text(size=10),
+        axis.text = element_text(size=10),
+        axis.title = element_text(size=10))
+dev.off()
+
+##############################################
+##############################################
+##############################################
+
+
+
+
 
 #EB
 rmap <- robustify(map_hat, weight=w_eb[l], mean=summary(map_hat)[4], n=1)
@@ -128,14 +190,3 @@ plotdt %>%
         axis.text = element_text(size=10),
         axis.title = element_text(size=10))
 dev.off()
-
-############################################
-
-tt <- as_tibble(matrix(paste(FIOCCO.n.events, FIOCCO.exp.time, sep="/"), nrow = 12, ncol = 10, byrow = F))
-colnames(tt) <- c(1:9, "New")
-interval <- c("0.00-0.25", "0.25-0.50", "0.50-0.75", "0.75-1.00",
-              "1.00-1.25", "1.25-1.50", "1.50-1.75", "1.75-2.08",
-              "2.08-2.50", "2.50-2.92", "2.92-3.33", "3.33-4.00")
-RNdt <- tt %>% mutate(Interval=interval) %>% relocate(Interval)
-
-kableExtra::kbl(RNdt, format="latex")
